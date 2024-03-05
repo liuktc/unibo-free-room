@@ -1,7 +1,8 @@
+from typing import Optional
 import requests
 from datetime import datetime
 import pytz
-from Room import Room
+from .Room import Room
 
 
 calendar_ids = {
@@ -103,7 +104,7 @@ def __intervalsIntersect(interval1:tuple, interval2:tuple):
     )
 
 
-def searchFreeRooms(start_time:str, end_time:str, year:int|None=None, month:int|None=None, day:int|None=None, campus:str="ingegneria") -> list[Room]:
+def searchFreeRooms(start_time:str, end_time:str, year:Optional[int]=None, month:Optional[int]=None, day:Optional[int]=None, campus:str="ingegneria") -> list[Room]:
     """
         Finds the rooms that are free in a given time slot.
 
@@ -145,8 +146,3 @@ def searchFreeRooms(start_time:str, end_time:str, year:int|None=None, month:int|
 
     free_rooms.sort(key=lambda r: r.name)
     return free_rooms
-
-
-
-if __name__ == "__main__":
-    print( [room.name for room in searchFreeRooms("12:30", "15:00")] ) 
