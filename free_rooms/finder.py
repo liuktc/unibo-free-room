@@ -23,8 +23,8 @@ BUILDINGS = sorted([ *building_to_ids.keys() ] + ["all"])
 
 ALLOW_PLANNING_THRESHOLD_SEC = 30*60
 
-__rooms_cache = None
-__cache_time = 0.0
+__rooms_cache = {}
+__cache_time = {}
 CACHE_DURATION = 5*60
 
 
@@ -49,15 +49,17 @@ def __getRoomIds(calendar_id:str="5e9996a228a649001237296d") -> list[str]:
     return calendar_info_json["payload"]["aule"]
 
 
-def __getCachedTimetable():
-    if (__rooms_cache is not None) and (time.time() - __cache_time < CACHE_DURATION):
-        return __rooms_cache
+def __getCachedTimetable(year, month, day, calendar_id):
+    key = (year, month, day, calendar_id)
+    if (key in __rooms_cache) and (key in __cache_time) and (time.time() - __cache_time[key] < CACHE_DURATION):
+        return __rooms_cache[key]
     return None
 
-def __updateCachedTimetable(rooms):
+def __updateCachedTimetable(rooms, year, month, day, calendar_id):
     global __rooms_cache, __cache_time
-    __rooms_cache = rooms
-    __cache_time = time.time()
+    key = (year, month, day, calendar_id)
+    __rooms_cache[key] = rooms
+    __cache_time[key] = time.time()
 
 
 def __getTimeTable(year:int, month:int, day:int, calendar_id:str="5e9996a228a649001237296d") -> list[Room]:
@@ -76,7 +78,7 @@ def __getTimeTable(year:int, month:int, day:int, calendar_id:str="5e9996a228a649
             rooms : list[Room]
                 List of the rooms.
     """
-    cached_rooms = __getCachedTimetable()
+    cached_rooms = __getCachedTimetable(year, month, day, calendar_id)
     if cached_rooms is not None: return cached_rooms
 
     url = (
@@ -115,7 +117,7 @@ def __getTimeTable(year:int, month:int, day:int, calendar_id:str="5e9996a228a649
             if room_id not in rooms: rooms[room_id] = Room(room_id, room_name, room_building)
             rooms[room_id].lessons.append( (lesson_start, lesson_end) )
         
-    __updateCachedTimetable(rooms)
+    __updateCachedTimetable(rooms, year, month, day, calendar_id)
     return rooms
 
 
