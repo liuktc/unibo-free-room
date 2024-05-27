@@ -117,7 +117,7 @@ async def handle_user_response(update: Update, context: ContextTypes.DEFAULT_TYP
                 text = "No free rooms"
             else:
                 for plan in search_result:
-                    if len(search_result) > 1: text += f"<b>>>>>> {plan['slot']} >>>>></b>"
+                    text += f"<b>>>>>> {plan['slot']} >>>>></b>"
 
                     prev_building = None
                     for room in plan["rooms"]:
@@ -127,7 +127,7 @@ async def handle_user_response(update: Update, context: ContextTypes.DEFAULT_TYP
                             text += f"<b>--- {room.building.upper()} ---</b>\n"
                         text += room.name + "\n"
 
-                    if len(search_result) > 1: text += f"\n"
+                    text += f"\n"
 
             await update.message.reply_text(text, parse_mode=telegram.constants.ParseMode.HTML)
 
