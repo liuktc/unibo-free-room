@@ -1,6 +1,6 @@
 from typing import Optional
 import requests
-from datetime import datetime
+from datetime import datetime, timedelta
 import pytz
 from .Room import Room
 import time
@@ -21,7 +21,7 @@ id_to_building = {
 }
 BUILDINGS = sorted([ *building_to_ids.keys() ])
 
-START_PLANNING_THRESHOLD = 30*60
+ALLOW_PLANNING_THRESHOLD_SEC = 30*60
 
 __rooms_cache = None
 __cache_time = 0.0
@@ -150,6 +150,48 @@ def __isRoomFree(room, slot_start, slot_end):
 
 
 def searchFreeRooms(
+        slot_start: datetime, 
+        slot_end: datetime, 
+        year: int, 
+        month: int, 
+        day: int, 
+        campus: str = "ingegneria",
+        buildings_filter: Optional[list[str]] = None
+    ) -> list[Room]:
+    """
+        Finds the rooms that are free in a given time slot.
+
+        Parameters
+        ----------
+            start_time, end_time : datetime
+                Start and end time to query for the free rooms.
+
+            year, month, day : int
+                Year, month, and day to query.
+
+            campus : str
+                Campus in which the rooms are searched.
+
+        Returns
+        -------
+            free_rooms : list[Room]
+                List of free rooms.
+    """
+    free_rooms = []
+    rooms = __getTimeTable(year, month, day, calendar_ids[campus])
+
+    # Looks for free rooms
+    for room in rooms.values():
+        is_room_free = __isRoomFree(room, slot_start, slot_end)
+        is_correct_building = (buildings_filter is None) or (room.building in buildings_filter)
+        
+        if is_room_free and is_correct_building: free_rooms.append(room)
+
+    free_rooms.sort(key=lambda r: (r.building, r.name))
+    return free_rooms
+    
+
+def planFreeRooms(
         start_time: str, 
         end_time: str, 
         year: Optional[int] = None, 
@@ -159,7 +201,7 @@ def searchFreeRooms(
         buildings_filter: Optional[list[str]] = None
     ) -> list[Room]:
     """
-        Finds the rooms that are free in a given time slot.
+        Finds a plan of free rooms within a given time slot.
 
         Parameters
         ----------
@@ -188,14 +230,39 @@ def searchFreeRooms(
     slot_start = pytz.timezone("Europe/Rome").localize( datetime(year, month, day, start_hour, start_mins) )
     slot_end = pytz.timezone("Europe/Rome").localize( datetime(year, month, day, end_hour, end_mins) )
 
-    rooms = __getTimeTable(year, month, day, calendar_ids[campus])
+    free_rooms = searchFreeRooms(slot_start, slot_end, year, month, day, campus, buildings_filter)
 
-    # Looks for free rooms
-    for room in rooms.values():
-        is_room_free = __isRoomFree(room, slot_start, slot_end)
-        is_correct_building = (buildings_filter is None) or (room.building in buildings_filter)
+    # Attempt to create a plan as no room is available
+    if len(free_rooms) == 0:
+        plan = []
         
-        if is_room_free and is_correct_building: free_rooms.append(room)
+        while ((slot_end - slot_start).total_seconds() >= 2*ALLOW_PLANNING_THRESHOLD_SEC):
+            part_of_plan = []
+            slot_middle = slot_end
 
-    free_rooms.sort(key=lambda r: (r.building, r.name))
-    return free_rooms
+            # Search a free room by reducing the end slot
+            part_of_plan = searchFreeRooms(slot_start, slot_middle, year, month, day, campus, buildings_filter)
+            while len(part_of_plan) == 0:
+                if (slot_middle - slot_start).total_seconds() < 2*ALLOW_PLANNING_THRESHOLD_SEC: break
+                slot_middle = slot_middle - timedelta(seconds=ALLOW_PLANNING_THRESHOLD_SEC)
+                assert slot_start < slot_middle < slot_end
+                
+                part_of_plan = searchFreeRooms(slot_start, slot_middle, year, month, day, campus, buildings_filter)
+
+            if len(part_of_plan) == 0:
+                # No plan found, increase start slot and try again
+                slot_start = slot_start + timedelta(seconds=ALLOW_PLANNING_THRESHOLD_SEC)
+            else:
+                # Part of plan found, update start slot
+                plan += [{
+                    "slot": f"{slot_start.hour}:{slot_start.minute:02d} - {slot_middle.hour}:{slot_middle.minute:02d}",
+                    "rooms": part_of_plan
+                }]
+                slot_start = slot_middle
+
+        return plan
+    else:
+        return [{
+            "slot": f"{slot_start.hour}:{slot_start.minute:02d} - {slot_end.hour}:{slot_end.minute:02d}",
+            "rooms": free_rooms
+        }]

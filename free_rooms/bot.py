@@ -1,7 +1,7 @@
 import telegram
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
-from .finder import searchFreeRooms, BUILDINGS
+from .finder import planFreeRooms, BUILDINGS
 
 
 QUERY_DATE_PROMPT = (
@@ -84,22 +84,28 @@ async def handle_user_response(update: Update, context: ContextTypes.DEFAULT_TYP
             if len(user_input_args) >= 3:
                 buildings_filter = user_input_args[2].lower().split(",")
             if context.user_data['date'] == 'today':
-                search_result = searchFreeRooms(start_time, end_time, buildings_filter=buildings_filter) 
+                search_result = planFreeRooms(start_time, end_time, buildings_filter=buildings_filter) 
             else:
                 day, month, year = context.user_data['date'].split("/")
-                search_result = searchFreeRooms(start_time, end_time, day=int(day), month=int(month), year=int(year), buildings_filter=buildings_filter)
+                search_result = planFreeRooms(start_time, end_time, day=int(day), month=int(month), year=int(year), buildings_filter=buildings_filter)
 
             text = ""
             if len(search_result) == 0:
                 text = "No free rooms"
             else:
-                prev_building = None
-                for room in search_result:
-                    if prev_building != room.building:
-                        prev_building = room.building
-                        if len(text) != 0: text += "\n"
-                        text += f"<b>--- {room.building.upper()} ---</b>\n"
-                    text += room.name + "\n"
+                for plan in search_result:
+                    if len(search_result) > 1: text += f"<b>>>>>> {plan['slot']} >>>>></b>"
+
+                    prev_building = None
+                    for room in plan["rooms"]:
+                        if prev_building != room.building:
+                            prev_building = room.building
+                            if len(text) != 0: text += "\n"
+                            text += f"<b>--- {room.building.upper()} ---</b>\n"
+                        text += room.name + "\n"
+
+                    if len(search_result) > 1: text += f"\n"
+
             await update.message.reply_text(text, parse_mode=telegram.constants.ParseMode.HTML)
 
             # Reset state
