@@ -9,6 +9,18 @@ calendar_ids = {
     "ingegneria": "5e9996a228a649001237296d"
 }
 
+building_to_ids = {
+    "eng": [ "5dc3ed5c74895700123a91aa", "5dc3ed5c74895700123a91ac", "5dc3ed5c74895700123a91a8", "5dc3ed5c74895700123a91a6" ],
+    "chem": [ "5dc3ed5a74895700123a90aa", "5dc3ed5974895700123a906c" ],
+    "math": [ "5dc3ed5c74895700123a916c" ],
+    "arch": [ "5dc3ed5c74895700123a9184" ]
+}
+id_to_building = {
+    id: building for building, ids in building_to_ids.items() for id in ids 
+}
+
+BUILDINGS = sorted([ *building_to_ids.keys() ])
+
 
 def __getRoomIds(calendar_id:str="5e9996a228a649001237296d") -> list[str]:
     """
@@ -64,7 +76,7 @@ def __getTimeTable(year:int, month:int, day:int, calendar_id:str="5e9996a228a649
     for lesson in timetable_json:
         lesson_start = pytz.UTC.localize( datetime.strptime(lesson["dataInizio"], "%Y-%m-%dT%H:%M:%S.%fZ") )
         lesson_end = pytz.UTC.localize( datetime.strptime(lesson["dataFine"], "%Y-%m-%dT%H:%M:%S.%fZ") )
-        room_id, room_name = "", ""
+        room_id, room_name, room_building = None, None, None
 
         if lesson["notaSospensione"] is not None: continue # Cancelled lesson
 
@@ -73,10 +85,14 @@ def __getTimeTable(year:int, month:int, day:int, calendar_id:str="5e9996a228a649
             if resource["aulaId"] is not None:
                 room_id = resource["aulaId"]
                 room_name = resource["aula"]["descrizione"]
+                building_id = resource["aula"]["edificioId"]
+                if "edificioId" in resource["aula"]:
+                    room_building = id_to_building[building_id] if building_id in id_to_building else building_id
                 break
-
-        if room_id not in rooms: rooms[room_id] = Room(room_id, room_name)
-        rooms[room_id].lessons.append( (lesson_start, lesson_end) )
+        
+        if room_id is not None:
+            if room_id not in rooms: rooms[room_id] = Room(room_id, room_name, room_building)
+            rooms[room_id].lessons.append( (lesson_start, lesson_end) )
         
     return rooms
 
@@ -104,7 +120,15 @@ def __intervalsIntersect(interval1:tuple, interval2:tuple):
     )
 
 
-def searchFreeRooms(start_time:str, end_time:str, year:Optional[int]=None, month:Optional[int]=None, day:Optional[int]=None, campus:str="ingegneria") -> list[Room]:
+def searchFreeRooms(
+        start_time: str, 
+        end_time: str, 
+        year: Optional[int] = None, 
+        month: Optional[int] = None, 
+        day: Optional[int] = None, 
+        campus: str = "ingegneria",
+        buildings_filter: Optional[list[str]] = None
+    ) -> list[Room]:
     """
         Finds the rooms that are free in a given time slot.
 
@@ -142,7 +166,10 @@ def searchFreeRooms(start_time:str, end_time:str, year:Optional[int]=None, month
             if __intervalsIntersect( (slot_start, slot_end), (lesson_start, lesson_end) ):
                 is_room_free = False
                 break
-        if is_room_free: free_rooms.append(room)
 
-    free_rooms.sort(key=lambda r: r.name)
+        is_correct_building = (buildings_filter is None) or (room.building in buildings_filter)
+        
+        if is_room_free and is_correct_building: free_rooms.append(room)
+
+    free_rooms.sort(key=lambda r: (r.building, r.name))
     return free_rooms

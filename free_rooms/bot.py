@@ -1,6 +1,24 @@
+import telegram
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
-from .finder import searchFreeRooms
+from .finder import searchFreeRooms, BUILDINGS
+
+
+QUERY_DATE_PROMPT = (
+    "Insert the date in the format:\n"
+    "<code>dd/mm/yyyy</code>\n"
+    "Example: <code>23/04/2024</code>"
+
+)
+QUERY_TIME_PROMPT = (
+    "Insert the time slots in the format:\n"
+    "<code>hh:mm hh:mm [comma separated buildings]</code>\n"
+    "Examples:\n"
+    "<code>8:00 12:00</code>\n"
+    "<code>8:00 12:00 eng</code>\n"
+    "<code>8:00 12:00 eng,chem</code>\n"
+    f"\nAvailable buildings are: {', '.join([f'<code>{b}</code>' for b in BUILDINGS])}"
+)
 
 
 async def free_rooms(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -35,41 +53,54 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     # print(update.message)
     if query.data == "today":
         await query.edit_message_reply_markup(None)
-        await query.edit_message_text("Insert the time slots in the format hh:mm hh:mm\nExample: 8:00 12:00", reply_markup=None)
+        await query.edit_message_text(QUERY_TIME_PROMPT, reply_markup=None, parse_mode=telegram.constants.ParseMode.HTML)
         context.user_data['state'] = 'awaiting_time_slots'
         context.user_data['date'] = 'today'
     elif query.data == "another_day":
         await query.edit_message_reply_markup(None)
-        await query.edit_message_text("Insert the date in the format dd/mm/yyyy\nExample: 23/04/2024", reply_markup=None)
+        await query.edit_message_text(QUERY_DATE_PROMPT, reply_markup=None, parse_mode=telegram.constants.ParseMode.HTML)
         context.user_data['state'] = 'awaiting_date'
     else:
         print("Unknown action")
     # await query.edit_message_text(text=f"Selected option: {query.data}")
+
 
 async def handle_user_response(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if 'state' in context.user_data:
         if context.user_data['state'] == 'awaiting_date':
             user_date = update.message.text
             context.user_data['date'] = user_date 
-            await update.message.reply_text("Thank you! Now, insert the time slots in the format hh:mm hh:mm\nExample: 8:00 12:00")
+            await update.message.reply_text(f"Thank you! Now, {QUERY_TIME_PROMPT[0].lower()}{QUERY_TIME_PROMPT[1:]}", parse_mode=telegram.constants.ParseMode.HTML)
             context.user_data['state'] = 'awaiting_time_slots'
 
         elif context.user_data['state'] == 'awaiting_time_slots':
-            user_time_slots = update.message.text
-            context.user_data['time_slots'] = user_time_slots
+            user_input = update.message.text
+            user_input_args = user_input.split()
+            # context.user_data['time_slots'] = user_time_slots
 
             # API Call with retrieved data 
-            start_time, end_time = user_time_slots.split() # Assuming you get these from the input
+            start_time, end_time = user_input_args[0], user_input_args[1]
+            buildings_filter = None
+            if len(user_input_args) >= 3:
+                buildings_filter = user_input_args[2].lower().split(",")
             if context.user_data['date'] == 'today':
-                search_result = searchFreeRooms(start_time, end_time) 
+                search_result = searchFreeRooms(start_time, end_time, buildings_filter=buildings_filter) 
             else:
                 day, month, year = context.user_data['date'].split("/")
-                search_result = searchFreeRooms(start_time, end_time,day=int(day), month=int(month), year=int(year) )
+                search_result = searchFreeRooms(start_time, end_time, day=int(day), month=int(month), year=int(year), buildings_filter=buildings_filter)
 
             text = ""
-            for room in search_result:
-                text += room.name + "\n"
-            await update.message.reply_text(text)
+            if len(search_result) == 0:
+                text = "No free rooms"
+            else:
+                prev_building = None
+                for room in search_result:
+                    if prev_building != room.building:
+                        prev_building = room.building
+                        if len(text) != 0: text += "\n"
+                        text += f"<b>--- {room.building.upper()} ---</b>\n"
+                    text += room.name + "\n"
+            await update.message.reply_text(text, parse_mode=telegram.constants.ParseMode.HTML)
 
             # Reset state
             del context.user_data['state'] 
