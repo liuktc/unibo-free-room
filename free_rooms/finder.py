@@ -3,6 +3,7 @@ import requests
 from datetime import datetime
 import pytz
 from .Room import Room
+import time
 
 
 calendar_ids = {
@@ -18,8 +19,14 @@ building_to_ids = {
 id_to_building = {
     id: building for building, ids in building_to_ids.items() for id in ids 
 }
-
 BUILDINGS = sorted([ *building_to_ids.keys() ])
+
+START_PLANNING_THRESHOLD = 30*60
+
+__rooms_cache = None
+__cache_time = 0.0
+CACHE_DURATION = 5*60
+
 
 
 def __getRoomIds(calendar_id:str="5e9996a228a649001237296d") -> list[str]:
@@ -42,6 +49,17 @@ def __getRoomIds(calendar_id:str="5e9996a228a649001237296d") -> list[str]:
     return calendar_info_json["payload"]["aule"]
 
 
+def __getCachedTimetable():
+    if (__rooms_cache is not None) and (time.time() - __cache_time < CACHE_DURATION):
+        return __rooms_cache
+    return None
+
+def __updateCachedTimetable(rooms):
+    global __rooms_cache, __cache_time
+    __rooms_cache = rooms
+    __cache_time = time.time()
+
+
 def __getTimeTable(year:int, month:int, day:int, calendar_id:str="5e9996a228a649001237296d") -> list[Room]:
     """
         Gets the room information associated to a calendar id.
@@ -58,6 +76,9 @@ def __getTimeTable(year:int, month:int, day:int, calendar_id:str="5e9996a228a649
             rooms : list[Room]
                 List of the rooms.
     """
+    cached_rooms = __getCachedTimetable()
+    if cached_rooms is not None: return cached_rooms
+
     url = (
         "https://unibo.prod.up.cineca.it/api/Impegni/getImpegniCalendarioPubblico" + 
         "?mostraImpegniAnnullati=false" +
@@ -94,6 +115,7 @@ def __getTimeTable(year:int, month:int, day:int, calendar_id:str="5e9996a228a649
             if room_id not in rooms: rooms[room_id] = Room(room_id, room_name, room_building)
             rooms[room_id].lessons.append( (lesson_start, lesson_end) )
         
+    __updateCachedTimetable(rooms)
     return rooms
 
 
@@ -118,6 +140,13 @@ def __intervalsIntersect(interval1:tuple, interval2:tuple):
         (start2 < end1 <= end2) or
         (start1 <= start2 and end1 >= end2)
     )
+
+
+def __isRoomFree(room, slot_start, slot_end):
+    for lesson_start, lesson_end in room.lessons:
+        if __intervalsIntersect( (slot_start, slot_end), (lesson_start, lesson_end) ):
+            return False
+    return True
 
 
 def searchFreeRooms(
@@ -154,19 +183,16 @@ def searchFreeRooms(
         year, month, day = now.year, now.month, now.day
 
     free_rooms = []
-    slot_start = pytz.timezone("Europe/Rome").localize( datetime(year, month, day, int(start_time.split(":")[0]), int(start_time.split(":")[1])) )
-    slot_end = pytz.timezone("Europe/Rome").localize( datetime(year, month, day, int(end_time.split(":")[0]), int(end_time.split(":")[1])) )
+    start_hour, start_mins = int(start_time.split(":")[0]), int(start_time.split(":")[1])
+    end_hour, end_mins = int(end_time.split(":")[0]), int(end_time.split(":")[1])
+    slot_start = pytz.timezone("Europe/Rome").localize( datetime(year, month, day, start_hour, start_mins) )
+    slot_end = pytz.timezone("Europe/Rome").localize( datetime(year, month, day, end_hour, end_mins) )
 
     rooms = __getTimeTable(year, month, day, calendar_ids[campus])
 
     # Looks for free rooms
     for room in rooms.values():
-        is_room_free = True
-        for lesson_start, lesson_end in room.lessons:
-            if __intervalsIntersect( (slot_start, slot_end), (lesson_start, lesson_end) ):
-                is_room_free = False
-                break
-
+        is_room_free = __isRoomFree(room, slot_start, slot_end)
         is_correct_building = (buildings_filter is None) or (room.building in buildings_filter)
         
         if is_room_free and is_correct_building: free_rooms.append(room)
