@@ -19,7 +19,7 @@ building_to_ids = {
 id_to_building = {
     id: building for building, ids in building_to_ids.items() for id in ids 
 }
-BUILDINGS = sorted([ *building_to_ids.keys() ])
+BUILDINGS = sorted([ *building_to_ids.keys() ] + ["all"])
 
 ALLOW_PLANNING_THRESHOLD_SEC = 30*60
 
@@ -156,7 +156,8 @@ def searchFreeRooms(
         month: int, 
         day: int, 
         campus: str = "ingegneria",
-        buildings_filter: Optional[list[str]] = None
+        buildings_filter: Optional[list[str]] = None,
+        exclude_rooms: Optional[list[str]] = None,
     ) -> list[Room]:
     """
         Finds the rooms that are free in a given time slot.
@@ -183,9 +184,11 @@ def searchFreeRooms(
     # Looks for free rooms
     for room in rooms.values():
         is_room_free = __isRoomFree(room, slot_start, slot_end)
-        is_correct_building = (buildings_filter is None) or (room.building in buildings_filter)
+        is_correct_building = (buildings_filter is None) or (room.building in buildings_filter) or ("all" in buildings_filter)
+        is_excluded_room = (exclude_rooms is not None) and (room.name in exclude_rooms)
         
-        if is_room_free and is_correct_building: free_rooms.append(room)
+        if (is_room_free) and (is_correct_building) and (not is_excluded_room): 
+            free_rooms.append(room)
 
     free_rooms.sort(key=lambda r: (r.building, r.name))
     return free_rooms
@@ -198,7 +201,8 @@ def planFreeRooms(
         month: Optional[int] = None, 
         day: Optional[int] = None, 
         campus: str = "ingegneria",
-        buildings_filter: Optional[list[str]] = None
+        buildings_filter: Optional[list[str]] = None,
+        exclude_rooms: Optional[list[str]] = None,
     ) -> list[Room]:
     """
         Finds a plan of free rooms within a given time slot.
@@ -230,7 +234,7 @@ def planFreeRooms(
     slot_start = pytz.timezone("Europe/Rome").localize( datetime(year, month, day, start_hour, start_mins) )
     slot_end = pytz.timezone("Europe/Rome").localize( datetime(year, month, day, end_hour, end_mins) )
 
-    free_rooms = searchFreeRooms(slot_start, slot_end, year, month, day, campus, buildings_filter)
+    free_rooms = searchFreeRooms(slot_start, slot_end, year, month, day, campus, buildings_filter, exclude_rooms)
 
     # Attempt to create a plan as no room is available
     if len(free_rooms) == 0:
@@ -241,13 +245,13 @@ def planFreeRooms(
             slot_middle = slot_end
 
             # Search a free room by reducing the end slot
-            part_of_plan = searchFreeRooms(slot_start, slot_middle, year, month, day, campus, buildings_filter)
+            part_of_plan = searchFreeRooms(slot_start, slot_middle, year, month, day, campus, buildings_filter, exclude_rooms)
             while len(part_of_plan) == 0:
                 if (slot_middle - slot_start).total_seconds() < 2*ALLOW_PLANNING_THRESHOLD_SEC: break
                 slot_middle = slot_middle - timedelta(seconds=ALLOW_PLANNING_THRESHOLD_SEC)
                 assert slot_start < slot_middle < slot_end
                 
-                part_of_plan = searchFreeRooms(slot_start, slot_middle, year, month, day, campus, buildings_filter)
+                part_of_plan = searchFreeRooms(slot_start, slot_middle, year, month, day, campus, buildings_filter, exclude_rooms)
 
             if len(part_of_plan) == 0:
                 # No plan found, increase start slot and try again
