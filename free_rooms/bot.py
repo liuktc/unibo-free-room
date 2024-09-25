@@ -125,7 +125,7 @@ async def handle_user_response(update: Update, context: ContextTypes.DEFAULT_TYP
                             prev_building = room.building
                             if len(text) != 0: text += "\n"
                             text += f"<b>--- {room.building.upper()} ---</b>\n"
-                        text += room.name + "\n"
+                        text += room.name + (" ⚡" if room.has_plugs else "") + "\n"
 
                     text += f"\n"
 

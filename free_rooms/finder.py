@@ -109,12 +109,19 @@ def __getTimeTable(year:int, month:int, day:int, calendar_id:str="5e9996a228a649
                 room_id = resource["aulaId"]
                 room_name = resource["aula"]["descrizione"]
                 building_id = resource["aula"]["edificioId"]
+                has_plugs = (
+                    ("618e5fbca3f996dc957568a6" in resource["aula"]["serviziAulaId"]) and 
+                    ("618e5fbca3f996dc9575689f" in resource["aula"]["serviziAulaId"]) and 
+                    ("618e5fbca3f996dc9575689e" in resource["aula"]["serviziAulaId"])
+                )
+
                 if "edificioId" in resource["aula"]:
                     room_building = id_to_building[building_id] if building_id in id_to_building else building_id
                 break
         
         if room_id is not None:
-            if room_id not in rooms: rooms[room_id] = Room(room_id, room_name, room_building)
+            if room_id not in rooms: 
+                rooms[room_id] = Room(room_id, room_name, room_building, has_plugs)
             rooms[room_id].lessons.append( (lesson_start, lesson_end) )
         
     __updateCachedTimetable(rooms, year, month, day, calendar_id)
