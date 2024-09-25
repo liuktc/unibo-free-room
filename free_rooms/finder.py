@@ -22,6 +22,14 @@ id_to_building = {
 }
 BUILDINGS = sorted([ *building_to_ids.keys() ] + ["all"])
 
+ROOMS_WITH_PLUGS = [
+    "AULA 0.5",
+    "AULA 0.6",
+    "AULA 4.1",
+    "AULA I",
+    "AULA V",
+]
+
 ALLOW_PLANNING_THRESHOLD_SEC = 30*60
 
 __rooms_cache = {}
@@ -110,11 +118,7 @@ def __getTimeTable(year:int, month:int, day:int, calendar_id:str="5e9996a228a649
                 room_id = resource["aulaId"]
                 room_name = resource["aula"]["descrizione"]
                 building_id = resource["aula"]["edificioId"]
-                has_plugs = (
-                    ("618e5fbca3f996dc957568a6" in resource["aula"]["serviziAulaId"]) and 
-                    ("618e5fbca3f996dc9575689f" in resource["aula"]["serviziAulaId"]) and 
-                    ("618e5fbca3f996dc9575689e" in resource["aula"]["serviziAulaId"])
-                )
+                has_plugs = room_name in ROOMS_WITH_PLUGS
 
                 if "edificioId" in resource["aula"]:
                     room_building = id_to_building[building_id] if building_id in id_to_building else building_id
