@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 import pytz
 from .Room import Room
 import time
+import re
 
 
 calendar_ids = {
@@ -158,6 +159,15 @@ def __isRoomFree(room, slot_start, slot_end):
     return True
 
 
+def __parseTimeString(time_str):
+    pattern = re.compile(r"^(?P<hours>\d\d?)([:.])?((?P<minutes>\d\d?))?$")
+    match = pattern.search(time_str)
+
+    hours = int(match.group("hours"))
+    minutes = int(match.group("minutes")) if match.group("minutes") is not None else 0
+    return hours, minutes
+
+
 def searchFreeRooms(
         slot_start: datetime, 
         slot_end: datetime, 
@@ -238,8 +248,8 @@ def planFreeRooms(
         year, month, day = now.year, now.month, now.day
 
     free_rooms = []
-    start_hour, start_mins = int(start_time.split(":")[0]), int(start_time.split(":")[1])
-    end_hour, end_mins = int(end_time.split(":")[0]), int(end_time.split(":")[1])
+    start_hour, start_mins = __parseTimeString(start_time)
+    end_hour, end_mins = __parseTimeString(end_time)
     slot_start = pytz.timezone("Europe/Rome").localize( datetime(year, month, day, start_hour, start_mins) )
     slot_end = pytz.timezone("Europe/Rome").localize( datetime(year, month, day, end_hour, end_mins) )
 
